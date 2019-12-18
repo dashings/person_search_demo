@@ -53,6 +53,8 @@ def detect(cfg,
     print("The query feature is normalized")
     query_feats = torch.nn.functional.normalize(query_feats, dim=1, p=2) # 计算出查询图片的特征向量
 
+    query_pids_unique = list(set(query_pids))
+           
     ############# 行人检测模型初始化 #############
     model = Darknet(cfg, img_size)
 
@@ -159,14 +161,25 @@ def detect(cfg,
                 # distmat = np.array([[1.79536, 2.00926, 0.52790, 1.98851, 2.15138, 1.75929, 1.99410],
                 #                     [1.78843, 1.96036, 0.53674, 1.98929, 1.99490, 1.84878, 1.98575]])
                 distmat = distmat.cpu().numpy()  # <class 'tuple'>: (3, 12)
-                distmat = distmat.sum(axis=0) / len(query_feats) # 平均一下query中同一行人的多个结果
-                index = distmat.argmin()
-                if distmat[index] < dist_thres:
-                    print('距离：%s'%distmat[index])
-                    plot_one_box(gallery_loc[index], im0, label='find!', color=colors[int(cls)])
-                    # cv2.imshow('person search', im0)
-                    # cv2.waitKey()
+                # distmat = distmat.sum(axis=0) / len(query_feats) # 平均一下query中同一行人的多个结果
+                # index = distmat.argmin()
+                # if distmat[index] < dist_thres:
+                #     print('距离：%s'%distmat[index])
+                #     plot_one_box(gallery_loc[index], im0, label='find!', color=colors[int(cls)])
+                #     # cv2.imshow('person search', im0)
+                #     # cv2.waitKey()
+                # 多目标搜索
+                rlts = np.zeros(shape=(len(query_pids_unique),distmat.shape[1]))
+                for i, qid in enumerate(query_pids_unique):
+                    indices = [i for i, x in enumerate(query_pids) if x == qid]
+                    rlts[i,:] = distmat[indices,:].sum(axis=0) / len(indices)
 
+                minindex= rlts.argmin(1)
+                for i, ind in enumerate(minindex):
+                    if rlts[i,ind]< dist_thres:
+                        # print('距离：%s'%rlts[i,ind])
+                        plot_one_box(gallery_loc[ind], im0, label='find! id:'+str(query_pids_unique[i]), color=colors[int(cls)])
+                #多目标搜索 end
         print('Done. (%.3fs)' % (time.time() - t))
 
         if opt.webcam:  # Show live webcam
